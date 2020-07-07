@@ -20,13 +20,13 @@ module.exports = {
       provider = options.provider();
     } else if (options.provider) {
       provider = options.provider;
-    } else if (options.websockets) {
+    } else if (options.websockets || /^wss?:\/\//.test(options.url)) {
       provider = new Web3.providers.WebsocketProvider(
-        "ws://" + options.host + ":" + options.port
+        options.url || "ws://" + options.host + ":" + options.port
       );
     } else {
       provider = new Web3.providers.HttpProvider(
-        `http://${options.host}:${options.port}`,
+        options.url || `http://${options.host}:${options.port}`,
         { keepAlive: false }
       );
     }
@@ -55,20 +55,25 @@ module.exports = {
           "networks[networkName].networkCheckTimeout property to do this.";
         throw new Error(errorMessage);
       }, networkCheckTimeout);
-      interfaceAdapter
-        .getBlockNumber()
-        .then(() => {
-          clearTimeout(noResponseFromNetworkCall);
-          resolve(true);
-        })
-        .catch(error => {
-          console.log(
-            "> Something went wrong while attempting to connect " +
-              "to the network. Check your network configuration."
-          );
-          clearTimeout(noResponseFromNetworkCall);
-          reject(error);
-        });
+
+      const networkCheck = setInterval(() => {
+        interfaceAdapter
+          .getBlockNumber()
+          .then(() => {
+            clearTimeout(noResponseFromNetworkCall);
+            clearInterval(networkCheck);
+            resolve(true);
+          })
+          .catch(error => {
+            console.log(
+              "> Something went wrong while attempting to connect " +
+                "to the network. Check your network configuration."
+            );
+            clearTimeout(noResponseFromNetworkCall);
+            clearInterval(networkCheck);
+            reject(error);
+          });
+      });
     });
   }
 };

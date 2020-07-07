@@ -35,6 +35,30 @@ const commandReference = {
   "s": "print stacktrace"
 };
 
+const shortCommandReference = {
+  "o": "step over",
+  "i": "step into",
+  "u": "step out",
+  "n": "step next",
+  ";": "step instruction",
+  "p": "print state",
+  "l": "print context",
+  "h": "print help",
+  "v": "print variables",
+  ":": "evaluate",
+  "+": "add watch",
+  "-": "remove watch",
+  "?": "list watches & breakpoints",
+  "b": "add breakpoint",
+  "B": "remove breakpoint",
+  "c": "continue",
+  "q": "quit",
+  "r": "reset",
+  "t": "load",
+  "T": "unload",
+  "s": "stacktrace"
+};
+
 const truffleColors = {
   mint: chalk.hex("#3FE0C5"),
   orange: chalk.hex("#E4A663"),
@@ -73,19 +97,7 @@ var DebugUtils = {
       contracts.map(abstraction => abstraction.detectNetwork())
     );
 
-    return contracts.map(contract => ({
-      contractName: contract.contractName,
-      source: contract.source,
-      sourceMap: contract.sourceMap,
-      sourcePath: contract.sourcePath,
-      bytecode: contract.bytecode,
-      immutableReferences: contract.immutableReferences,
-      abi: contract.abi,
-      ast: contract.ast,
-      deployedBytecode: contract.deployedBytecode,
-      deployedSourceMap: contract.deployedSourceMap,
-      compiler: contract.compiler
-    }));
+    return contracts;
   },
 
   //attempts to test whether a given compilation is a real compilation,
@@ -133,8 +145,8 @@ var DebugUtils = {
     };
 
     //now: walk each AST
-    return compilation.sources.every(source =>
-      source ? allIDsUnseenSoFar(source.ast) : true
+    return compilation.sources.every(
+      source => (source ? allIDsUnseenSoFar(source.ast) : true)
     );
   },
 
@@ -182,23 +194,21 @@ var DebugUtils = {
     if (!hasAllSource) {
       lines.push("");
       lines.push(
-        "Warning: The source code for one or more contracts could not be found."
+        `${chalk.bold(
+          "Warning:"
+        )} The source code for one or more contracts could not be found.`
       );
     }
 
     return lines.join(OS.EOL);
   },
 
-  formatHelp: function(lastCommand) {
-    if (!lastCommand) {
-      lastCommand = "n";
-    }
-
+  formatHelp: function(lastCommand = "n") {
     var prefix = [
       "Commands:",
       truffleColors.mint("(enter)") +
         " last command entered (" +
-        commandReference[lastCommand] +
+        shortCommandReference[lastCommand] +
         ")"
     ];
 
@@ -579,6 +589,8 @@ var DebugUtils = {
         name = `${contractName}.${functionName}`;
       } else if (contractName) {
         name = contractName;
+      } else if (functionName) {
+        name = functionName;
       } else {
         name = "unknown function";
       }
@@ -604,12 +616,12 @@ var DebugUtils = {
             ? `Error: Improper return (caused message: ${message})`
             : "Error: Improper return (may be an unexpected self-destruct)"
           : message !== undefined
-          ? `Error: Revert (message: ${message})`
-          : "Error: Revert or exceptional halt"
+            ? `Error: Revert (message: ${message})`
+            : "Error: Revert or exceptional halt"
       );
     }
-    let indented = lines.map((line, index) =>
-      index === 0 ? line : " ".repeat(indent) + line
+    let indented = lines.map(
+      (line, index) => (index === 0 ? line : " ".repeat(indent) + line)
     );
     return indented.join(OS.EOL);
   },
@@ -760,8 +772,9 @@ var DebugUtils = {
   cleanThis: function(variables, replacement) {
     return Object.assign(
       {},
-      ...Object.entries(variables).map(([variable, value]) =>
-        variable === "this" ? { [replacement]: value } : { [variable]: value }
+      ...Object.entries(variables).map(
+        ([variable, value]) =>
+          variable === "this" ? { [replacement]: value } : { [variable]: value }
       )
     );
   }

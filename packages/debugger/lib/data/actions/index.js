@@ -11,10 +11,12 @@ export function scope(id, pointer, parentId, sourceId, compilationId) {
 }
 
 export const DECLARE = "DATA_DECLARE_VARIABLE";
-export function declare(node, compilationId) {
+export function declare(name, astRef, scopeAstRef, compilationId) {
   return {
     type: DECLARE,
-    node,
+    name,
+    astRef,
+    scopeAstRef,
     compilationId
   };
 }
@@ -60,12 +62,13 @@ export function defineType(node, compilationId) {
 }
 
 export const ALLOCATE = "DATA_ALLOCATE";
-export function allocate(storage, memory, abi, state) {
+export function allocate(storage, memory, abi, calldata, state) {
   return {
     type: ALLOCATE,
     storage,
     memory,
     abi,
+    calldata,
     state
   };
 }

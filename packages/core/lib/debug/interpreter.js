@@ -36,6 +36,7 @@ class DebugInterpreter {
   constructor(config, session, txHash) {
     this.session = session;
     this.network = config.network;
+    this.fetchExternal = config.fetchExternal;
     this.printer = new DebugPrinter(config, session);
     this.txHash = txHash;
     this.lastCommand = "n";
@@ -396,33 +397,48 @@ class DebugInterpreter {
       }
     }
     if (cmd === "t") {
-      if (!this.session.view(selectors.session.status.loaded)) {
-        let txSpinner = ora(DebugUtils.formatTransactionStartMessage()).start();
-        await this.session.load(cmdArgs);
-        //if load succeeded
-        if (this.session.view(selectors.session.status.success)) {
-          txSpinner.succeed();
-          //if successful, change prompt
-          this.setPrompt(DebugUtils.formatPrompt(this.network, cmdArgs));
+      if (!this.fetchExternal) {
+        if (!this.session.view(selectors.session.status.loaded)) {
+          let txSpinner = ora(
+            DebugUtils.formatTransactionStartMessage()
+          ).start();
+          await this.session.load(cmdArgs);
+          //if load succeeded
+          if (this.session.view(selectors.session.status.success)) {
+            txSpinner.succeed();
+            //if successful, change prompt
+            this.setPrompt(DebugUtils.formatPrompt(this.network, cmdArgs));
+          } else {
+            txSpinner.fail();
+            loadFailed = true;
+          }
         } else {
-          txSpinner.fail();
           loadFailed = true;
+          this.printer.print(
+            "Please unload the current transaction before loading a new one."
+          );
         }
       } else {
         loadFailed = true;
         this.printer.print(
-          "Please unload the current transaction before loading a new one."
+          "Cannot change transactions in fetch-external mode.  Please quit and restart the debugger instead."
         );
       }
     }
     if (cmd === "T") {
-      if (this.session.view(selectors.session.status.loaded)) {
-        await this.session.unload();
-        this.printer.print("Transaction unloaded.");
-        this.setPrompt(DebugUtils.formatPrompt(this.network));
+      if (!this.fetchExternal) {
+        if (this.session.view(selectors.session.status.loaded)) {
+          await this.session.unload();
+          this.printer.print("Transaction unloaded.");
+          this.setPrompt(DebugUtils.formatPrompt(this.network));
+        } else {
+          this.printer.print("No transaction to unload.");
+          this.printer.print("");
+        }
       } else {
-        this.printer.print("No transaction to unload.");
-        this.printer.print("");
+        this.printer.print(
+          "Cannot change transactions in fetch-external mode.  Please quit and restart the debugger instead."
+        );
       }
     }
 
@@ -431,12 +447,13 @@ class DebugInterpreter {
       this.printer.print("");
       //check if transaction failed
       if (!this.session.view(evm.transaction.status)) {
-        this.printer.printRevertMessage();
+        await this.printer.printRevertMessage();
         this.printer.print("");
         this.printer.printStacktrace(true); //final stacktrace
       } else {
         //case if transaction succeeded
         this.printer.print("Transaction completed successfully.");
+        await this.printer.printReturnValue();
       }
     }
 
@@ -462,6 +479,9 @@ class DebugInterpreter {
         break;
       case "v":
         await this.printer.printVariables();
+        if (this.session.view(trace.finished)) {
+          await this.printer.printReturnValue();
+        }
         break;
       case ":":
         watchExpressionAnalytics(cmdArgs);
@@ -499,9 +519,14 @@ class DebugInterpreter {
           temporaryPrintouts.add(location);
         }
         if (this.session.view(selectors.session.status.loaded)) {
-          this.printer.printInstruction(temporaryPrintouts);
-          this.printer.printFile();
-          this.printer.printState();
+          if (this.session.view(trace.steps).length > 0) {
+            this.printer.printInstruction(temporaryPrintouts);
+            this.printer.printFile();
+            this.printer.printState();
+          } else {
+            //if there are no trace steps, let's just print a warning message
+            this.printer.print("No trace steps to inspect.");
+          }
         }
         //finally, print watch expressions
         await this.printer.printWatchExpressionsResults(
@@ -552,6 +577,7 @@ class DebugInterpreter {
       case "r":
         if (this.session.view(selectors.session.status.loaded)) {
           this.printer.printAddressesAffected();
+          this.printer.warnIfNoSteps();
           this.printer.printFile();
           this.printer.printState();
         }
@@ -559,6 +585,7 @@ class DebugInterpreter {
       case "t":
         if (!loadFailed) {
           this.printer.printAddressesAffected();
+          this.printer.warnIfNoSteps();
           this.printer.printFile();
           this.printer.printState();
         } else if (this.session.view(selectors.session.status.isError)) {
@@ -570,12 +597,10 @@ class DebugInterpreter {
         //nothing to print
         break;
       default:
-        this.printer.printHelp();
+        this.printer.printHelp(this.lastCommand);
     }
 
     if (
-      cmd !== "i" &&
-      cmd !== "u" &&
       cmd !== "b" &&
       cmd !== "B" &&
       cmd !== "v" &&

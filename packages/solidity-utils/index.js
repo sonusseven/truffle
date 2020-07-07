@@ -2,9 +2,7 @@ const debug = require("debug")("solidity-utils");
 const CodeUtils = require("@truffle/code-utils");
 const Codec = require("@truffle/codec");
 const jsonpointer = require("json-pointer");
-//NOTE: for some reason using the default export isn't working??
-//so we're going to do this the "advanced usage" way...
-const { IntervalTree } = require("node-interval-tree");
+const IntervalTree = require("node-interval-tree").default;
 
 var SolidityUtils = {
   getCharacterOffsetToLineAndColumnMapping: function(source) {
@@ -290,10 +288,12 @@ var SolidityUtils = {
     // return one with longest pointer
     // (note: returns { range, node, pointer }
     let sourceEnd = sourceStart + sourceLength;
+    let pointerLength = pointer => (pointer.match(/\//g) || []).length; //counts number of slashes in ptr
     return findOverlappingRange(sourceStart, sourceLength)
       .filter(({ range }) => sourceStart >= range[0] && sourceEnd <= range[1])
       .reduce(
-        (acc, cur) => (cur.pointer.length >= acc.pointer.length ? cur : acc),
+        (acc, cur) =>
+          pointerLength(cur.pointer) >= pointerLength(acc.pointer) ? cur : acc,
         { pointer: "" }
       );
     //note we make sure to bias towards cur (the new value being compared) rather than acc (the old value)
@@ -306,16 +306,10 @@ var SolidityUtils = {
     let ranges = SolidityUtils.rangeNodes(ast);
     for (let { range, node, pointer } of ranges) {
       let [start, end] = range;
-      //NOTE: we are doing this the "advanced usage" way because the
-      //other way isn't working for some reason
-      tree.insert({ low: start, high: end, data: { range, node, pointer } });
+      tree.insert(start, end, { range, node, pointer });
     }
     return (sourceStart, sourceLength) =>
-      //because we're doing this the "advanced usage" way, we have
-      //to extract data afterward
-      tree
-        .search(sourceStart, sourceStart + sourceLength)
-        .map(({ data }) => data);
+      tree.search(sourceStart, sourceStart + sourceLength);
   },
 
   //for use by makeOverlapFunction
@@ -329,12 +323,9 @@ var SolidityUtils = {
     } else if (node instanceof Object) {
       let results = [];
 
-      if (node.src !== undefined && node.id !== undefined) {
-        //there are some "pseudo-nodes" with a src but no id.
-        //these will cause problems, so we want to exclude them.
-        //(to my knowledge this only happens with the externalReferences
-        //to an InlineAssembly node, so excluding them just means we find
-        //the InlineAssembly node instead, which is fine)
+      if (node.src !== undefined && node.nodeType !== undefined) {
+        //don't add "pseudo-nodes" (i.e.: outside variable references
+        //in assembly) with no nodeType
         results.push({ pointer, node, range: SolidityUtils.getRange(node) });
       }
 

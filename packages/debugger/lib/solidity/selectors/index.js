@@ -147,7 +147,11 @@ let solidity = createSelectorTree({
     sources: createLeaf(
       ["/info/sources", evm.current.context],
       (sources, context) =>
-        context ? (sources[context.compilationId] || { byId: null }).byId : null
+        context
+          ? context.compilationId !== undefined
+            ? (sources[context.compilationId] || { byId: null }).byId
+            : [] //unknown context, return no sources
+          : null //no tx loaded, return null
     ),
 
     /**
@@ -312,16 +316,13 @@ let solidity = createSelectorTree({
 
     /**
      * solidity.current.willReturn
+     *
+     * covers both normal returns & failures
      */
     willReturn: createLeaf(
       [evm.current.step.isHalting],
       isHalting => isHalting
     ),
-
-    /**
-     * solidity.current.willFail
-     */
-    willFail: createLeaf([evm.current.step.isExceptionalHalting], x => x),
 
     /**
      * solidity.current.nextMapped
